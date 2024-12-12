@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+  <div id="root"></div>
+</body>
+<!-- This setup is not suitable for production. -->
+<!-- Only use it in development! -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script async src="https://ga.jspm.io/npm:es-module-shims@1.7.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react?dev",
+    "react-dom/client": "https://esm.sh/react-dom/client?dev"
+  }
+}
+</script>
+<script type="text/babel" data-type="module">
+import React, { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { useState } from 'react';
+
+// 定义棋盘大小为20x20
+const BOARD_SIZE = 20;
+
+// 判断是否五子连珠
+function checkWin(squares, currentPlayer) {
+  const directions = [
+    // 水平方向
+    { dx: 1, dy: 0 },
+    // 垂直方向
+    { dx: 0, dy: 1 },
+    // 正斜方向
+    { dx: 1, dy: 1 },
+    // 反斜方向
+    { dx: 1, dy: -1 }
+  ];
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      if (squares[row][col] === currentPlayer) {
+        for (let i = 0; i < directions.length; i++) {
+          const { dx, dy } = directions[i];
+          let count = 1;
+          // 向一个方向遍历
+          for (let step = 1; step < 5; step++) {
+            const newRow = row + step * dy;
+            const newCol = col + step * dx;
+            if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE && squares[newRow][newCol] === currentPlayer) {
+              count++;
+            } else {
+              break;
+            }
+          }
+          // 向相反方向遍历
+          for (let step = 1; step < 5; step++) {
+            const newRow = row - step * dy;
+            const newCol = col - step * dx;
+            if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE && squares[newRow][newCol] === currentPlayer) {
+              count++;
+            } else {
+              break;
+            }
+          }
+          if (count >= 5) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function Square({ row, col, value, onSquareClick }) {
+  return (
+    <button className="square" onClick={() => onSquareClick(row, col)}>
+      {value}
+    </button>
+  );
+}
+
+function Board({ xIsNext, squares, onPlay }) {
+  const [gameOver, setGameOver] = useState(false); // 新增状态用于标记游戏是否结束
+  const [winnerPlayer, setWinnerPlayer] = useState(''); // 新增状态用于记录胜利的玩家
+
+  function handleClick(row, col) {
+    if (gameOver) {
+      return; // 如果游戏已结束，直接不处理点击事件，阻止落子
+    }
+    const currentPlayer = xIsNext? 'X' : 'O';
+    const nextSquares = JSON.parse(JSON.stringify(squares));
+    if (xIsNext) {
+      nextSquares[row][col] = 'X';
+    } else {
+      nextSquares[row][col] = 'O';
+    }
+    // 先判断落子后的棋盘状态是否五子连珠，如果是则直接判定胜利并结束游戏
+    if (checkWin(nextSquares, currentPlayer)) {
+      onPlay(nextSquares);
+      setGameOver(true); // 标记游戏结束
+      setWinnerPlayer(currentPlayer); // 记录胜利的玩家
+      return;
+    }
+    // 正常情况下将落子后的状态传递给父组件进行更新
+    onPlay(nextSquares);
+  }
+
+  let status;
+  if (winnerPlayer) {
+    status = `🎉 恭喜玩家 ${winnerPlayer} 获得胜利！🎉`;
+  } else if (!gameOver) {
+    status = `下一位玩家：${xIsNext? 'X' : 'O'}`;
+  } else {
+    status = '游戏结束';
+  }
+
+  return (
+    <>
+      <div className="status">{status}</div>
+      {/* 使用flex布局来确保每行方块排列整齐 */}
+      <div className="board" style={{ display: 'flex', flexDirection: 'column' }}>
+        {Array.from({ length: BOARD_SIZE }).map((_, rowIndex) => (
+          <div className="board-row" key={rowIndex} style={{ display: 'flex' }}>
+            {Array.from({ length: BOARD_SIZE }).map((_, colIndex) => (
+              <Square
+                key={`square-${rowIndex}-${colIndex}`}
+                row={rowIndex}
+                col={colIndex}
+                value={squares[rowIndex][colIndex]}
+                onSquareClick={handleClick}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+let App = function Game() {
+  // 初始化20x20的棋盘状态
+  const [history, setHistory] = useState([Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(null))]);
+  // 当前步数
+  const [currentMove, setCurrentMove] = useState(0);
+  const xIsNext = currentMove % 2 === 0;
+  const currentSquares = history[currentMove];
+
+  function handlePlay(nextSquares) {
+    const nextHistory = [...history.slice(0, currentMove + 1), nextSquares];
+    setHistory(nextHistory);
+    setCurrentMove(nextHistory.length - 1);
+  }
+
+  function jumpTo(nextMove) {
+    setCurrentMove(nextMove);
+  }
+
+  const moves = history.map((squares, move) => {
+    let description;
+    if (move > 0) {
+      description = '前往第 #' + move + ' 步';
+    } else {
+      description = '回到游戏开始';
+    }
+    return (
+      <li key={move}>
+        <button onClick={() => jumpTo(move)}>{description}</button>
+      </li>
+    );
+  });
+
+  return (
+    <div className="game">
+      <div className="game-board">
+        <Board xIsNext={xIsNext} squares={currentSquares} onPlay={handlePlay} />
+      </div>
+      <div className="game-info">
+        <ol>{moves}</ol>
+      </div>
+    </div>
+  );
+}
+
+const root = createRoot(document.getElementById('root'));
+root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+</script>
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: sans-serif;
+  margin: 20px;
+  padding: 0;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 22px;
+}
+
+h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+h3 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+h4 {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+h5 {
+  margin-top: 0;
+  font-size: 14px;
+}
+
+h6 {
+  margin-top: 0;
+  font-size: 12px;
+}
+
+code {
+  font-size: 1.2em;
+}
+
+ul {
+  padding-inline-start: 20px;
+}
+
+.square {
+  background: #fff;
+  border: 1px solid #999;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 26px;
+  height: 32px;
+  margin: 0; /* 去除之前的负边距 */
+  padding: 0;
+  text-align: center;
+  width: 32px;
+}
+
+.status {
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+.game {
+  display: flex;
+  flex-direction: row;
+}
+
+.game-info {
+  margin-left: 20px;
+}
+
+/* 调整棋盘整体样式 */
+.game-board {
+  width: fit-content;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-row {
+  display: flex;
+  justify-content: flex-start; /* 确保方块从左到右排列 */
+}
+
+</style>
+</html>
